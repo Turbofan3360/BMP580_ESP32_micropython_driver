@@ -5,7 +5,8 @@ mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, 
 	 * This function initialises a new driver instance. It creates an 
      * It then calls barometer_setup to configure the BMP580's config registers as required.
 	*/
-	uint8_t scl_pin, sda_pin, i2c_address;
+	gpio_num_t scl_pin, sda_pin;
+	uint8_t i2c_address;
 	int8_t port;
 	i2c_port_num_t i2c_port;
 	i2c_master_bus_handle_t bus_handle;
@@ -16,13 +17,13 @@ mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, 
 	static const mp_arg_t allowed_args[] = {
 		{ MP_QSTR_scl, MP_ARG_REQUIRED | MP_ARG_INT },
 		{ MP_QSTR_sda, MP_ARG_REQUIRED | MP_ARG_INT },
-		{ MP_QSTR_port, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = DEFAULT_I2C_PORT_NUM} },
+		{ MP_QSTR_i2c_port, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = DEFAULT_I2C_PORT_NUM} },
 		{ MP_QSTR_address, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = DEFAULT_I2C_ADDR} },
 	};
 
 	// Checking arguments
 	mp_arg_val_t parsed_args[MP_ARRAY_SIZE(allowed_args)];
-	mp_arg_parse_all(n_args, args, (mp_map_t*)&n_kw, MP_ARRAY_SIZE(allowed_args), allowed_args, parsed_args);
+    mp_arg_parse_all_kw_array(n_args, n_kw, args, MP_ARRAY_SIZE(allowed_args), allowed_args, parsed_args);
 
 	// Extracting arguments
 	scl_pin = parsed_args[0].u_int;
@@ -246,7 +247,7 @@ static void log_func(const char *log_string){
     mp_printf(&mp_plat_print, "%s", log_string);
 }
 
-mp_obj_t get_press_temp(mp_obj_t* self_in){
+mp_obj_t get_press_temp(mp_obj_t self_in){
 	/**
 	 * Micropython-exposed function to return pressure and temperature data from the BMP580
 	*/
@@ -266,7 +267,7 @@ mp_obj_t get_press_temp(mp_obj_t* self_in){
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(bmp580_get_press_temp, get_press_temp);
 
-mp_obj_t get_press_temp_alt(mp_obj_t* self_in){
+mp_obj_t get_press_temp_alt(mp_obj_t self_in){
 	/**
 	 * Micropython-exposed function to return pressure and temperature data from the BMP580 and convert that into an altitude reading
 	 * Altitude measured from the location at which the driver was initialised

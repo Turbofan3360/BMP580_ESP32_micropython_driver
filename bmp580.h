@@ -43,7 +43,7 @@ typedef struct {
 
 // Function definitions
 static void barometer_setup(bmp580_obj_t* self);
-static int32_t* read_bmp580_data(bmp580_obj_t* self);
+static int32_t* read_bmp580_data(bmp580_obj_t* self, int32_t* output);
 static void log_func(const char *log_string);
 
 extern const mp_obj_type_t bmp580_type;
