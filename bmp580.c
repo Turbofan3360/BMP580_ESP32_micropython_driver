@@ -11,7 +11,7 @@ mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, 
 	i2c_port_num_t i2c_port;
 	i2c_master_bus_handle_t bus_handle;
 	i2c_master_dev_handle_t device_handle;
-	esp_err_t err;
+	esp_err_t err = ESP_ERR_INVALID_STATE;
 
 	// Defining the allowed arguments, and setting default values for I2C port/address. Can be modified as keyword arguments
 	static const mp_arg_t allowed_args[] = {
@@ -58,7 +58,7 @@ mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, 
 	}
 
 	// If there's no already initialized bus handle or port is set to autoselect, then create a bus:
-	if ((err == ESP_ERR_INVALID_STATE) || (port == -1)){
+	if (err == ESP_ERR_INVALID_STATE){
 		// Setting I2C port value
 		if (port == -1){
 			i2c_port = -1;
@@ -84,7 +84,7 @@ mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, 
 		err = i2c_new_master_bus(&i2c_mst_config, &bus_handle);
 
 		if (err != ESP_OK){
-			mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Error initialising I2C bus"));
+			mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Error initialising I2C bus: %s"), esp_err_to_name(err));
 		}
 	}
 
@@ -99,7 +99,7 @@ mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, 
 	err = i2c_master_bus_add_device(bus_handle, &dev_cfg, &device_handle);
 
 	if (err != ESP_OK){
-		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Error adding device to I2C bus"));
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Error adding device to I2C bus: %s"), esp_err_to_name(err));
 	}
 
 	// Creating and allocating memory to the "self" instance of this module
@@ -111,17 +111,18 @@ mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, 
     self->device_handle = device_handle;
     self->i2c_address = i2c_address;
 
-    // Setting up the barometer. Barometer takes 2ms to initialise after power-on
-    mp_hal_delay_ms(2);
+    // Setting up the barometer. Barometer takes 2ms to initialise after power-on, so it delays for that long to be 100% sure of no issues
+    vTaskDelay(pdMS_TO_TICKS(2));
     barometer_setup(self);
+	log_func("Sensor configured\n");
+
 
     // Reading initial pressure reading to save to self struct
-    int32_t data[2];
+    float data[2];
     read_bmp580_data(self, data);
-    log_func("Sensor configured\n");
 
-    self->initial_pressure = data[0]/6400.0f;
-    self->initial_temperature = data[1]/65536.0f;
+    self->initial_pressure = data[0];
+    self->initial_temperature = data[1];
 
 	return MP_OBJ_FROM_PTR(self);
 }
@@ -138,7 +139,7 @@ static void barometer_setup(bmp580_obj_t* self){
 	err = i2c_master_probe(self->bus_handle, self->i2c_address, 100);
 
 	if (err != ESP_OK){
-		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("BMP580 device not found on I2C bus"));
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("BMP580 device not found on I2C bus: %s"), esp_err_to_name(err));
 	}
 
 	// Configuring the BMP580 into normal power mode, ODR of 140Hz, disabled deep standby mode
@@ -147,7 +148,7 @@ static void barometer_setup(bmp580_obj_t* self){
 	err = i2c_master_transmit(self->device_handle, write_data, 2, 100);
 
 	if (err != ESP_OK){
-		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to write to sensor configuration registers"));
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to write to sensor configuration registers: %s"), esp_err_to_name(err));
 	}
 
 	// Enabling pressure measurements, configuring OSR to x8 for pressure, x2 for temperature
@@ -156,7 +157,7 @@ static void barometer_setup(bmp580_obj_t* self){
 	err = i2c_master_transmit(self->device_handle, write_data, 2, 100);
 
 	if (err != ESP_OK){
-		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to write to sensor configuration registers"));
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to write to sensor configuration registers: %s"), esp_err_to_name(err));
 	}
 
 	// Configuring the IIR filter for pressure/temperature - set coefficient to 7 for both of them
@@ -165,7 +166,7 @@ static void barometer_setup(bmp580_obj_t* self){
 	err = i2c_master_transmit(self->device_handle, write_data, 2, 100);
 
 	if (err != ESP_OK){
-		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to write to sensor configuration registers"));
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to write to sensor configuration registers: %s"), esp_err_to_name(err));
 	}
 
 	// Configuring the FIFO buffer - set FIFO to streaming mode, threshold set to 31 frames (15 given that both pressure and temperature will be output)
@@ -174,7 +175,7 @@ static void barometer_setup(bmp580_obj_t* self){
 	err = i2c_master_transmit(self->device_handle, write_data, 2, 100);
 
 	if (err != ESP_OK){
-		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to write to sensor configuration registers"));
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to write to sensor configuration registers: %s"), esp_err_to_name(err));
 	}
 
 	// Configuring the FIFO buffer - 0 decimation, pressure and temperature data enabled
@@ -183,17 +184,18 @@ static void barometer_setup(bmp580_obj_t* self){
 	err = i2c_master_transmit(self->device_handle, write_data, 2, 100);
 
 	if (err != ESP_OK){
-		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to write to sensor configuration registers"));
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to write to sensor configuration registers: %s"), esp_err_to_name(err));
 	}
 }
 
-static int32_t* read_bmp580_data(bmp580_obj_t* self, int32_t* output){
+static float* read_bmp580_data(bmp580_obj_t* self, float* output){
 	/**
 	 * Internal driver function to get and process data from the BMP580
 	*/
 	uint8_t write_data[1], read_data[6];
 	uint8_t drdy = 0;
-	uint32_t start = mp_hal_ticks_ms();
+	int32_t data;
+	uint64_t start = esp_timer_get_time();
 	esp_err_t err;
 
 	write_data[0] = BMP580_NUM_FIFO_FRAMES;
@@ -204,7 +206,7 @@ static int32_t* read_bmp580_data(bmp580_obj_t* self, int32_t* output){
 		err = i2c_master_transmit_receive(self->device_handle, write_data, 1, read_data, 1, 5);
 
 		if (err != ESP_OK){
-			mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to read BMP580 register"));
+			mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to read BMP580 register: %s"), esp_err_to_name(err));
 		}
 
 		// Checking the number of frames
@@ -212,12 +214,9 @@ static int32_t* read_bmp580_data(bmp580_obj_t* self, int32_t* output){
 			break;
 		}
 		// Checking the timeout condition - this function will time out after 1 second
-		else if (mp_hal_ticks_ms() - start > 1000){
-			mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Timed out - no BMP580 data available in the FIFO buffer"));
+		else if (esp_timer_get_time() - start > 1000000){
+			mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Timed out - no BMP580 data available in the FIFO buffer: %s"), esp_err_to_name(err));
 		}
-		
-		// If no data - then wait 2 milliseconds
-		mp_hal_delay_ms(2);
 	}
 
 	// Reading a data frame from the FIFO
@@ -225,17 +224,20 @@ static int32_t* read_bmp580_data(bmp580_obj_t* self, int32_t* output){
 	err = i2c_master_transmit_receive(self->device_handle, write_data, 1, read_data, 6, 5);
 
 	if (err != ESP_OK){
-		mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Error reading data from BMP580 FIFO"));
+		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Error reading data from BMP580 FIFO: %s"), esp_err_to_name(err));
 	}
 
 	// Processing the data
 	// Pressure:
-	output[0] = (read_data[5]<<16) | (read_data[4]<<8) | read_data[3];
+	data = (read_data[5]<<16) | (read_data[4]<<8) | read_data[3];
+	output[0] = data/6400.0f;
 	// Temperature:
-	output[1] = (read_data[2]<<16) | (read_data[1]<<8) | read_data[0];
+	data = (read_data[2]<<16) | (read_data[1]<<8) | read_data[0];
 
 	// 32-bit sign extension for temperature:
-	output[1] = (output[1] ^ 0x800000) - 0x800000;
+	data = (data ^ 0x800000) - 0x800000;
+
+	output[1] = data/65536.0f;
 
 	return output;
 }
@@ -251,7 +253,7 @@ mp_obj_t get_press_temp(mp_obj_t self_in){
 	/**
 	 * Micropython-exposed function to return pressure and temperature data from the BMP580
 	*/
-	int32_t data[2];
+	float data[2];
 	mp_obj_t retvals[2];
 
 	bmp580_obj_t *self = MP_OBJ_TO_PTR(self_in);
@@ -260,8 +262,8 @@ mp_obj_t get_press_temp(mp_obj_t self_in){
 	read_bmp580_data(self, data);
 
 	// Converting the integer pressure/temperature values into float values in degrees celcius and hPa
-	retvals[0] = mp_obj_new_float(data[0]/6400.0f);
-	retvals[1] = mp_obj_new_float(data[1]/65536.0f);
+	retvals[0] = mp_obj_new_float(data[0]);
+	retvals[1] = mp_obj_new_float(data[1]);
 
 	return mp_obj_new_list(2, retvals);
 }
@@ -272,8 +274,7 @@ mp_obj_t get_press_temp_alt(mp_obj_t self_in){
 	 * Micropython-exposed function to return pressure and temperature data from the BMP580 and convert that into an altitude reading
 	 * Altitude measured from the location at which the driver was initialised
 	*/
-	int32_t data[2];
-	float float_data[2];
+	float data[2];
 	float alt;
 	mp_obj_t retvals[3];
 
@@ -282,14 +283,10 @@ mp_obj_t get_press_temp_alt(mp_obj_t self_in){
 	// Getting the data
 	read_bmp580_data(self, data);
 
-	// Converting the integer pressure/temperature values into float values in degrees celcius and hPa
-	float_data[0] = data[0]/6400.0f;
-	float_data[1] = data[1]/65536.0f;
+	alt = (self->initial_temperature/0.0065)*(1-pow(data[0]/self->initial_pressure, BAROMETRIC_EQ_COEFFICIENT));
 
-	alt = (self->initial_temperature/0.0065)*(1-pow(float_data[0]/self->initial_pressure, BAROMETRIC_EQ_COEFFICIENT));
-
-	retvals[0] = mp_obj_new_float(float_data[0]);
-	retvals[1] = mp_obj_new_float(float_data[1]);
+	retvals[0] = mp_obj_new_float(data[0]);
+	retvals[1] = mp_obj_new_float(data[1]);
 	retvals[2] = mp_obj_new_float(alt);
 
 	return mp_obj_new_list(3, retvals);

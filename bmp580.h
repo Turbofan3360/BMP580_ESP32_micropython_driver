@@ -12,6 +12,8 @@
 
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
+#include "esp_timer.h"
+#include "freertos/timers.h"
 
 // Register address definitions
 #define BMP580_ODR_PWR_CONFIG 0x37
@@ -43,7 +45,7 @@ typedef struct {
 
 // Function definitions
 static void barometer_setup(bmp580_obj_t* self);
-static int32_t* read_bmp580_data(bmp580_obj_t* self, int32_t* output);
+static float* read_bmp580_data(bmp580_obj_t* self, float* output);
 static void log_func(const char *log_string);
 
 extern const mp_obj_type_t bmp580_type;
