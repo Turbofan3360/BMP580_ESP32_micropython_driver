@@ -2,7 +2,7 @@
 
 mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args){
 	/**
-	 * This function initialises a new driver instance. It creates an 
+	 * This function initialises a new driver instance. It creates an I2C bus, and adds the barometer to it 
      * It then calls barometer_setup to configure the BMP580's config registers as required.
 	*/
 	gpio_num_t scl_pin, sda_pin;
