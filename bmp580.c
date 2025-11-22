@@ -111,18 +111,17 @@ mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, 
     self->device_handle = device_handle;
     self->i2c_address = i2c_address;
 
-    // Setting up the barometer. Barometer takes 2ms to initialise after power-on, so it delays for that long to be 100% sure of no issues
-    vTaskDelay(pdMS_TO_TICKS(2));
+    // Setting up the barometer. Barometer takes 2ms to initialise after power-on, so it delays for that long to be 100% sure of no issues before configuring the sensor
+    wait_micro_s(2000);
     barometer_setup(self);
 	log_func("Sensor configured\n");
-
 
     // Reading initial pressure reading to save to self struct
     float data[2];
     read_bmp580_data(self, data);
 
     self->initial_pressure = data[0];
-    self->initial_temperature = data[1];
+    self->initial_temperature = data[1]+273.15f;
 
 	return MP_OBJ_FROM_PTR(self);
 }
@@ -188,12 +187,22 @@ static void barometer_setup(bmp580_obj_t* self){
 	}
 }
 
+static void wait_micro_s(uint32_t micro_s_delay){
+	/**
+	 * Function to delay by a certain number of microseconds
+	*/
+	uint64_t start = esp_timer_get_time();
+
+	while (esp_timer_get_time() - start < micro_s_delay){}
+
+	return;
+}
+
 static float* read_bmp580_data(bmp580_obj_t* self, float* output){
 	/**
 	 * Internal driver function to get and process data from the BMP580
 	*/
 	uint8_t write_data[1], read_data[6];
-	uint8_t drdy = 0;
 	int32_t data;
 	uint64_t start = esp_timer_get_time();
 	esp_err_t err;
@@ -201,9 +210,9 @@ static float* read_bmp580_data(bmp580_obj_t* self, float* output){
 	write_data[0] = BMP580_NUM_FIFO_FRAMES;
 
 	// Checking to see if there's any data frames in the FIFO
-	while (drdy == 0){
+	while (true){
 		// Reading the register with the number of FIFO frames
-		err = i2c_master_transmit_receive(self->device_handle, write_data, 1, read_data, 1, 5);
+		err = i2c_master_transmit_receive(self->device_handle, write_data, 1, read_data, 1, 10);
 
 		if (err != ESP_OK){
 			mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Unable to read BMP580 register: %s"), esp_err_to_name(err));
@@ -217,11 +226,14 @@ static float* read_bmp580_data(bmp580_obj_t* self, float* output){
 		else if (esp_timer_get_time() - start > 1000000){
 			mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Timed out - no BMP580 data available in the FIFO buffer: %s"), esp_err_to_name(err));
 		}
+
+		// 0.5ms delay
+		wait_micro_s(500);
 	}
 
 	// Reading a data frame from the FIFO
 	write_data[0] = BMP580_FIFO_OUT;
-	err = i2c_master_transmit_receive(self->device_handle, write_data, 1, read_data, 6, 5);
+	err = i2c_master_transmit_receive(self->device_handle, write_data, 1, read_data, 6, 10);
 
 	if (err != ESP_OK){
 		mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Error reading data from BMP580 FIFO: %s"), esp_err_to_name(err));
@@ -283,7 +295,7 @@ mp_obj_t get_press_temp_alt(mp_obj_t self_in){
 	// Getting the data
 	read_bmp580_data(self, data);
 
-	alt = (self->initial_temperature/0.0065)*(1-pow(data[0]/self->initial_pressure, BAROMETRIC_EQ_COEFFICIENT));
+	alt = (self->initial_temperature/0.0065f)*(1.0f-powf(data[0]/self->initial_pressure, BAROMETRIC_EQ_COEFFICIENT));
 
 	retvals[0] = mp_obj_new_float(data[0]);
 	retvals[1] = mp_obj_new_float(data[1]);
