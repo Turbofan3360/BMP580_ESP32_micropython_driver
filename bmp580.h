@@ -29,6 +29,7 @@
 #define DEFAULT_I2C_PORT_NUM -1
 #define DEFAULT_I2C_ADDR 0
 #define BAROMETRIC_EQ_COEFFICIENT ((8.314*0.0065)/(9.80665*0.028964)) // Coefficient required for barometric equation: Rg*L/gM
+#define MAX_FIFO_ATTEMPTS 2
 
 // Object definition
 typedef struct {

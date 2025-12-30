@@ -2,7 +2,7 @@
 
 mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args){
 	/**
-	 * This function initialises a new driver instance. It creates an I2C bus, and adds the barometer to it 
+	 * This function initialises a new driver instance. It creates an I2C bus, and adds the barometer to it
      * It then calls barometer_setup to configure the BMP580's config registers as required.
 	*/
 	gpio_num_t scl_pin, sda_pin;
@@ -202,15 +202,16 @@ static float* read_bmp580_data(bmp580_obj_t* self, float* output){
 	/**
 	 * Internal driver function to get and process data from the BMP580
 	*/
-	uint8_t write_data[1], read_data[6];
+    uint8_t write_data[1], read_data[6], attempts = 0;
 	int32_t data;
-	uint64_t start = esp_timer_get_time();
 	esp_err_t err;
 
 	write_data[0] = BMP580_NUM_FIFO_FRAMES;
 
 	// Checking to see if there's any data frames in the FIFO
-	while (true){
+    while (attempts < MAX_FIFO_ATTEMPTS){
+        attempts ++;
+
 		// Reading the register with the number of FIFO frames
 		err = i2c_master_transmit_receive(self->device_handle, write_data, 1, read_data, 1, 10);
 
@@ -223,8 +224,8 @@ static float* read_bmp580_data(bmp580_obj_t* self, float* output){
 			break;
 		}
 		// Checking the timeout condition - this function will time out after 1 second
-		else if (esp_timer_get_time() - start > 1000000){
-			mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Timed out - no BMP580 data available in the FIFO buffer: %s"), esp_err_to_name(err));
+        if (attempts == MAX_FIFO_ATTEMPTS){
+            mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("No BMP580 data available in the FIFO buffer: %s"), esp_err_to_name(err));
 		}
 
 		// 0.5ms delay
