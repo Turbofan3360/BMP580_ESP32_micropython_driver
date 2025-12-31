@@ -116,7 +116,7 @@ mp_obj_t bmp580_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, 
     barometer_setup(self);
 	log_func("Sensor configured\n");
 
-    // Reading initial pressure reading to save to self struct
+    // Reading initial pressure (hPa) & temperature (kelvin) to save to self struct
     float data[2];
     read_bmp580_data(self, data);
 
@@ -198,7 +198,7 @@ static void wait_micro_s(uint32_t micro_s_delay){
 	return;
 }
 
-static float* read_bmp580_data(bmp580_obj_t* self, float* output){
+static void read_bmp580_data(bmp580_obj_t* self, float* output){
 	/**
 	 * Internal driver function to get and process data from the BMP580
 	*/
@@ -223,7 +223,7 @@ static float* read_bmp580_data(bmp580_obj_t* self, float* output){
 		if (read_data[0] != 0){
 			break;
 		}
-		// Checking the timeout condition - this function will time out after 1 second
+        // Checking the timeout condition - this function will time out after a certain number of tries
         if (attempts == MAX_FIFO_ATTEMPTS){
             mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("No BMP580 data available in the FIFO buffer: %s"), esp_err_to_name(err));
 		}
@@ -251,8 +251,6 @@ static float* read_bmp580_data(bmp580_obj_t* self, float* output){
 	data = (data ^ 0x800000) - 0x800000;
 
 	output[1] = data/65536.0f;
-
-	return output;
 }
 
 static void log_func(const char *log_string){

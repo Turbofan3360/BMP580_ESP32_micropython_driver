@@ -29,7 +29,7 @@
 #define DEFAULT_I2C_PORT_NUM -1
 #define DEFAULT_I2C_ADDR 0
 #define BAROMETRIC_EQ_COEFFICIENT ((8.314*0.0065)/(9.80665*0.028964)) // Coefficient required for barometric equation: Rg*L/gM
-#define MAX_FIFO_ATTEMPTS 2
+#define MAX_FIFO_ATTEMPTS 15
 
 // Object definition
 typedef struct {
@@ -47,7 +47,7 @@ typedef struct {
 static void log_func(const char *log_string);
 static void barometer_setup(bmp580_obj_t* self);
 static void wait_micro_s(uint32_t micro_s_delay);
-static float* read_bmp580_data(bmp580_obj_t* self, float* output);
+static void read_bmp580_data(bmp580_obj_t* self, float* output);
 
 extern const mp_obj_type_t bmp580_type;
 
